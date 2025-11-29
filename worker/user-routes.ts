@@ -53,7 +53,7 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
   app.post('/api/upload', async (c) => {
     try {
       const formData = await c.req.formData();
-      const file = formData.get('file') as unknown as Blob;
+      const file = formData.get('file') as File; // Cast to File to access .name property
       const folderId = formData.get('folderId') as string | null;
       if (!file) return bad(c, 'File is required');
       if (file.size > 2 * 1024 * 1024) return bad(c, 'File size exceeds 2MB demo limit.');

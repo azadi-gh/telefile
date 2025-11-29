@@ -21,9 +21,10 @@ const formatBytes = (bytes: number, decimals = 2) => {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 };
-const FileCard = ({ file, onDelete }: { file: TeleFile; onDelete: (id: string) => void }) => {
+const FileCard = ({ file, onDelete, onSelect }: { file: TeleFile; onDelete: (id: string) => void; onSelect: (file: TeleFile) => void; }) => {
   const isImage = file.mime.startsWith('image/');
-  const handleDownload = () => {
+  const handleDownload = (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (file.content) {
       const byteCharacters = atob(file.content);
       const byteNumbers = new Array(byteCharacters.length);
@@ -44,23 +45,27 @@ const FileCard = ({ file, onDelete }: { file: TeleFile; onDelete: (id: string) =
       toast.error("No content to download for this file.");
     }
   };
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDelete(file.id);
+  };
   return (
     <motion.div layout initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}>
-      <Card className="hover:shadow-lg transition-shadow duration-200">
+      <Card className="hover:shadow-lg transition-shadow duration-200 cursor-pointer" onClick={() => onSelect(file)}>
         <CardHeader className="flex flex-row items-start justify-between p-4">
           <div className="flex-1 truncate pr-2">
             <CardTitle className="text-base font-medium truncate">{file.name}</CardTitle>
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="w-8 h-8 flex-shrink-0">
+              <Button variant="ghost" size="icon" className="w-8 h-8 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                 <MoreVertical className="w-4 h-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={handleDownload}><Download className="mr-2 h-4 w-4" /> Download</DropdownMenuItem>
               <DropdownMenuItem disabled><Send className="mr-2 h-4 w-4" /> Forward</DropdownMenuItem>
-              <DropdownMenuItem className="text-destructive" onClick={() => onDelete(file.id)}>
+              <DropdownMenuItem className="text-destructive" onClick={handleDelete}>
                 <Trash2 className="mr-2 h-4 w-4" /> Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -97,6 +102,7 @@ export function FileList({ currentFolderId, onSelectFile }: FileListProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
       toast.success('File deleted');
+      onSelectFile(null); // Deselect file on deletion
     },
     onError: (error) => {
       toast.error(`Failed to delete file: ${error.message}`);
@@ -104,7 +110,7 @@ export function FileList({ currentFolderId, onSelectFile }: FileListProps) {
   });
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {Array.from({ length: 8 }).map((_, i) => (
           <Skeleton key={i} className="h-48 w-full" />
         ))}
@@ -120,9 +126,9 @@ export function FileList({ currentFolderId, onSelectFile }: FileListProps) {
     );
   }
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
       {files.map(file => (
-        <FileCard key={file.id} file={file} onDelete={deleteMutation.mutate} />
+        <FileCard key={file.id} file={file} onDelete={deleteMutation.mutate} onSelect={onSelectFile} />
       ))}
     </div>
   );

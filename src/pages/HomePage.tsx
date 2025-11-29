@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/sonner';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -6,6 +6,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/componen
 import { FolderPane } from '@/components/FileExplorer/FolderPane';
 import { FileList } from '@/components/FileExplorer/FileList';
 import { UploadDropzone } from '@/components/FileExplorer/UploadDropzone';
+import { FileInspector } from '@/components/FileExplorer/FileInspector';
 import { Button } from '@/components/ui/button';
 import { Settings, FileUp } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -13,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { api } from '@/lib/api-client';
 import { useQuery, useMutation, useQueryClient as useTanstackQueryClient } from '@tanstack/react-query';
-import type { AppSettings } from '@shared/types';
+import type { AppSettings, File as TeleFile } from '@shared/types';
 import { toast } from 'sonner';
 const queryClient = new QueryClient();
 function SettingsSheet() {
@@ -22,10 +23,12 @@ function SettingsSheet() {
   const { data: settings } = useQuery({
     queryKey: ['settings'],
     queryFn: () => api<AppSettings>('/api/settings'),
-    onSuccess: (data) => {
-      if (data.botToken) setToken(data.botToken);
-    },
   });
+  useEffect(() => {
+    if (settings?.botToken) {
+      setToken(settings.botToken);
+    }
+  }, [settings]);
   const updateSettingsMutation = useMutation({
     mutationFn: (newSettings: Partial<AppSettings>) => api<AppSettings>('/api/settings', { method: 'POST', body: JSON.stringify(newSettings) }),
     onSuccess: () => {
@@ -68,9 +71,12 @@ function SettingsSheet() {
 }
 function FileExplorer() {
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<any | null>(null);
+  const [selectedFile, setSelectedFile] = useState<TeleFile | null>(null);
   const [showUploader, setShowUploader] = useState(false);
   const queryClient = useTanstackQueryClient();
+  const handleSelectFile = (file: TeleFile | null) => {
+    setSelectedFile(file);
+  };
   return (
     <div className="h-screen w-full flex flex-col bg-background text-foreground">
       <header className="flex items-center justify-between p-4 border-b shrink-0">
@@ -90,7 +96,7 @@ function FileExplorer() {
             <FolderPane selectedFolderId={currentFolderId} onSelectFolder={setCurrentFolderId} />
           </ResizablePanel>
           <ResizableHandle withHandle />
-          <ResizablePanel defaultSize={80}>
+          <ResizablePanel defaultSize={selectedFile ? 50 : 80}>
             <div className="p-6 h-full overflow-y-auto">
               {showUploader && (
                 <div className="mb-8">
@@ -102,9 +108,17 @@ function FileExplorer() {
                   />
                 </div>
               )}
-              <FileList currentFolderId={currentFolderId} onSelectFile={setSelectedFile} />
+              <FileList currentFolderId={currentFolderId} onSelectFile={handleSelectFile} />
             </div>
           </ResizablePanel>
+          {selectedFile && (
+            <>
+              <ResizableHandle withHandle />
+              <ResizablePanel defaultSize={30} minSize={20} className="min-w-[360px]">
+                <FileInspector file={selectedFile} onClose={() => setSelectedFile(null)} />
+              </ResizablePanel>
+            </>
+          )}
         </ResizablePanelGroup>
       </main>
       <footer className="text-center p-2 text-xs text-muted-foreground border-t">
