@@ -1,6 +1,6 @@
 # TeleFile
 
-[cloudflarebutton]
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/azadi-gh/telefile)
 
 ## Description
 
@@ -146,7 +146,7 @@ The app will be live at `<your-worker>.<your-subdomain>.workers.dev`. Assets are
 
 For custom domains or advanced config, edit `wrangler.jsonc` (do not modify bindings or DO names).
 
-[cloudflarebutton]
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/azadi-gh/telefile)
 
 ### Post-Deployment
 
