@@ -1,4 +1,4 @@
-import React, 'useCallback, useState'
+import React, { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -27,15 +27,22 @@ export function UploadDropzone({ currentFolderId, onUploadComplete }: UploadDrop
   const queryClient = useQueryClient()
   const uploadMutation = useMutation({
     mutationFn: async (formData: FormData) => {
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      })
-      const json = await response.json()
-      if (!response.ok || !json.success) {
-        throw new Error(json.error || 'Upload failed')
+      try {
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        })
+        const json = await response.json()
+        if (!response.ok || !json.success) {
+          throw new Error(json.error || 'Upload failed')
+        }
+        return json.data
+      } catch (error) {
+        if (error instanceof Error) {
+          throw new Error(`Network error or server issue: ${error.message}`)
+        }
+        throw new Error('An unknown error occurred during upload.')
       }
-      return json.data
     },
     onSuccess: (data, variables) => {
       const id = variables.get('id') as string
@@ -44,6 +51,7 @@ export function UploadDropzone({ currentFolderId, onUploadComplete }: UploadDrop
         setItems(prev => prev.filter(item => item.id !== id))
       }, 1000)
       queryClient.invalidateQueries({ queryKey: ['files', currentFolderId] })
+      queryClient.invalidateQueries({ queryKey: ['files', null] }); // Invalidate search results
       onUploadComplete()
       toast.success('File uploaded successfully!')
     },
@@ -71,36 +79,37 @@ export function UploadDropzone({ currentFolderId, onUploadComplete }: UploadDrop
           formData.append('folderId', currentFolderId)
         }
         formData.append('id', item.id)
-        setItems(prev => prev.map(p => (p.id === item.id ? { ...p, progress: 50 } : p)))
+        setItems(prev => prev.map(p => (p.id === item.id ? { ...p, progress: 10 } : p)))
         uploadMutation.mutate(formData)
       })
     },
     [currentFolderId, uploadMutation]
   )
-  const handleUrlUpload = () => {
+  const handleUrlUpload = useCallback(() => {
+    let validUrl;
     try {
-      new URL(url)
+      validUrl = new URL(url)
     } catch (e) {
-      toast.error('Invalid URL provided.')
+      toast.error('Invalid URL. Please enter a full URL including http/https.')
       return
     }
     const newItem: UploadableItem = {
       id: crypto.randomUUID(),
-      name: url,
+      name: validUrl.href,
       progress: 0,
       source: 'url',
     }
     setItems(prev => [...prev, newItem])
     setUrl('')
     const formData = new FormData()
-    formData.append('url', url)
+    formData.append('url', validUrl.href)
     if (currentFolderId) {
       formData.append('folderId', currentFolderId)
     }
     formData.append('id', newItem.id)
-    setItems(prev => prev.map(p => (p.id === newItem.id ? { ...p, progress: 50 } : p)))
+    setItems(prev => prev.map(p => (p.id === newItem.id ? { ...p, progress: 10 } : p)))
     uploadMutation.mutate(formData)
-  }
+  }, [url, currentFolderId, uploadMutation]);
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, multiple: true })
   const removeItem = (id: string) => {
     setItems(prev => prev.filter(item => item.id !== id))
