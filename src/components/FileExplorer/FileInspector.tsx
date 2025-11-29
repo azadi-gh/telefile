@@ -43,11 +43,15 @@ const FilePreview = ({ file }: { file: TeleFile }) => {
       return <p className="text-xs text-destructive">Could not decode file content.</p>;
     }
   }
-  let Icon = FileIcon;
-  if (file.mime.startsWith('image/')) Icon = ImageIcon;
-  if (file.mime.startsWith('video/')) Icon = Video;
-  if (file.mime.startsWith('audio/')) Icon = Music;
-  return <Icon className="w-24 h-24 text-muted-foreground" />;
+  let IconComponent = FileIcon;
+  if (file.mime.startsWith('image/')) IconComponent = ImageIcon;
+  if (file.mime.startsWith('video/')) IconComponent = Video;
+  if (file.mime.startsWith('audio/')) IconComponent = Music;
+  return (
+    <div className="w-full h-full flex items-center justify-center bg-muted rounded-lg">
+      <IconComponent className="w-24 h-24 text-muted-foreground" />
+    </div>
+  );
 };
 export function FileInspector({ file, onClose }: FileInspectorProps) {
   const [isRenaming, setIsRenaming] = useState(false);
@@ -62,6 +66,7 @@ export function FileInspector({ file, onClose }: FileInspectorProps) {
     onSuccess: (updatedFile) => {
       queryClient.invalidateQueries({ queryKey: ['files', file?.folderId] });
       queryClient.invalidateQueries({ queryKey: ['files', updatedFile.folderId] });
+      queryClient.invalidateQueries({ queryKey: ['files', null] }); // Invalidate search
       toast.success('File updated!');
       setIsRenaming(false);
       setIsMoving(false);
@@ -72,6 +77,7 @@ export function FileInspector({ file, onClose }: FileInspectorProps) {
     mutationFn: () => api(`/api/files/${file!.id}`, { method: 'DELETE' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['files', file?.folderId] });
+      queryClient.invalidateQueries({ queryKey: ['files', null] }); // Invalidate search
       toast.success('File deleted');
       onClose();
     },
@@ -83,6 +89,7 @@ export function FileInspector({ file, onClose }: FileInspectorProps) {
       queryClient.setQueryData(['files', file?.folderId], (oldData: TeleFile[] | undefined) =>
         oldData?.map(f => f.id === updatedFile.id ? updatedFile : f)
       );
+      queryClient.invalidateQueries({ queryKey: ['files', null] }); // Invalidate search
       toast.success('File forwarded to Telegram!');
     },
     onError: (error) => toast.error(`Forwarding failed: ${error.message}`),
@@ -117,12 +124,12 @@ export function FileInspector({ file, onClose }: FileInspectorProps) {
             <Button variant="ghost" size="icon" onClick={onClose}><X className="w-4 h-4" /></Button>
           </div>
           <div className="flex-1 p-4 space-y-6 overflow-y-auto">
-            <Card>
+            <Card className="shadow-md">
               <CardHeader><CardTitle className="text-lg truncate">{file.name}</CardTitle></CardHeader>
               <CardContent>
-                <div className="aspect-square bg-muted rounded-lg flex items-center justify-center mb-4 p-2">
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="aspect-video bg-muted rounded-lg flex items-center justify-center mb-4 p-2">
                   <FilePreview file={file} />
-                </div>
+                </motion.div>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between"><span className="text-muted-foreground">Size</span><span>{formatBytes(file.size)}</span></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">Type</span><span className="truncate max-w-[150px]">{file.mime}</span></div>
@@ -130,7 +137,7 @@ export function FileInspector({ file, onClose }: FileInspectorProps) {
                 </div>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="shadow-md">
               <CardHeader className="flex-row items-center justify-between pb-2"><CardTitle className="text-base font-medium">Actions</CardTitle><Info className="w-4 h-4 text-muted-foreground" /></CardHeader>
               <CardContent className="grid grid-cols-2 gap-2">
                 <Button variant="outline" onClick={() => { setNewName(file.name); setIsRenaming(true); }}><Edit className="mr-2 h-4 w-4" /> Rename</Button>
@@ -143,7 +150,7 @@ export function FileInspector({ file, onClose }: FileInspectorProps) {
               </CardContent>
             </Card>
             {file.telegram && (
-              <Card>
+              <Card className="shadow-md">
                 <CardHeader><CardTitle className="text-base">Telegram Info</CardTitle></CardHeader>
                 <CardContent>
                   <p className="text-sm text-muted-foreground break-all">File ID: {file.telegram.file_id}</p>
@@ -160,7 +167,7 @@ export function FileInspector({ file, onClose }: FileInspectorProps) {
               <SelectContent><SelectItem value="root">Home (Root)</SelectItem>{folders?.map(f => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}</SelectContent>
             </Select>
           <DialogFooter><Button variant="outline" onClick={() => setIsMoving(false)}>Cancel</Button><Button onClick={handleMove}>Move</Button></DialogFooter></DialogContent></Dialog>
-          <AlertDialog open={isDeleting} onOpenChange={setIsDeleting}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete "{file.name}".</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => deleteMutation.mutate()} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+          <AlertDialog open={isDeleting} onOpenChange={setIsDeleting}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete "{file.name}" ({formatBytes(file.size)}).</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => deleteMutation.mutate()} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
         </motion.div>
       )}
     </AnimatePresence>

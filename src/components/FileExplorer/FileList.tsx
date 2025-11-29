@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 import type { File as TeleFile } from '@shared/types';
@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { File as FileIcon, MoreVertical, Trash2, Download, Send, UploadCloud, CheckCircle2 } from 'lucide-react';
+import { File as FileIcon, MoreVertical, Trash2, Download, Send, UploadCloud, CheckCircle2, SearchX } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +15,7 @@ interface FileListProps {
   currentFolderId: string | null;
   onSelectFile: (file: TeleFile | null) => void;
   toggleUploader: () => void;
+  searchTerm?: string;
 }
 const formatBytes = (bytes: number, decimals = 2) => {
   if (bytes === 0) return '0 Bytes';
@@ -24,7 +25,7 @@ const formatBytes = (bytes: number, decimals = 2) => {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 };
-const FileCard = ({ file, onSelect }: { file: TeleFile; onSelect: (file: TeleFile) => void; }) => {
+const FileCard = ({ file, onSelect }: { file: TeleFile; onSelect: (file: TeleFile | null) => void; }) => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const queryClient = useQueryClient();
   const isImage = file.mime.startsWith('image/');
@@ -32,6 +33,7 @@ const FileCard = ({ file, onSelect }: { file: TeleFile; onSelect: (file: TeleFil
     mutationFn: (id: string) => api(`/api/files/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['files', file.folderId] });
+      queryClient.invalidateQueries({ queryKey: ['files', null] }); // For search
       toast.success('File deleted');
       onSelect(null);
     },
@@ -43,6 +45,7 @@ const FileCard = ({ file, onSelect }: { file: TeleFile; onSelect: (file: TeleFil
       queryClient.setQueryData(['files', file.folderId], (oldData: TeleFile[] | undefined) =>
         oldData?.map(f => f.id === updatedFile.id ? updatedFile : f)
       );
+      queryClient.invalidateQueries({ queryKey: ['files', null] }); // For search
       toast.success('File forwarded to Telegram!');
     },
     onError: (error) => toast.error(`Forwarding failed: ${error.message}`),
@@ -68,8 +71,14 @@ const FileCard = ({ file, onSelect }: { file: TeleFile; onSelect: (file: TeleFil
   };
   return (
     <>
-      <motion.div layout initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}>
-        <Card className="hover:shadow-lg transition-shadow duration-200 cursor-pointer group" onClick={() => onSelect(file)}>
+      <motion.div
+        layout
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.9 }}
+        whileHover={{ y: -4, transition: { duration: 0.2 } }}
+      >
+        <Card className="hover:shadow-xl transition-shadow duration-200 cursor-pointer group" onClick={() => onSelect(file)}>
           <CardHeader className="flex flex-row items-start justify-between p-4">
             <div className="flex-1 truncate pr-2">
               <CardTitle className="text-base font-medium truncate">{file.name}</CardTitle>
@@ -130,15 +139,20 @@ const FileCard = ({ file, onSelect }: { file: TeleFile; onSelect: (file: TeleFil
     </>
   );
 };
-export function FileList({ currentFolderId, onSelectFile, toggleUploader }: FileListProps) {
-  const queryKey = ['files', currentFolderId];
+export function FileList({ currentFolderId, onSelectFile, toggleUploader, searchTerm }: FileListProps) {
+  const queryKey = ['files', searchTerm ? null : currentFolderId];
   const { data: files, isLoading } = useQuery({
     queryKey,
     queryFn: () => {
-      const url = currentFolderId ? `/api/files?folderId=${currentFolderId}` : '/api/files';
+      const url = searchTerm ? '/api/files' : currentFolderId ? `/api/files?folderId=${currentFolderId}` : '/api/files';
       return api<TeleFile[]>(url);
     },
   });
+  const filteredFiles = useMemo(() => {
+    if (!files) return [];
+    if (!searchTerm) return files;
+    return files.filter(file => file.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  }, [files, searchTerm]);
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -148,7 +162,16 @@ export function FileList({ currentFolderId, onSelectFile, toggleUploader }: File
       </div>
     );
   }
-  if (!files || files.length === 0) {
+  if (filteredFiles.length === 0) {
+    if (searchTerm) {
+      return (
+        <div className="flex flex-col items-center justify-center text-center py-16 text-muted-foreground rounded-lg border-2 border-dashed">
+          <SearchX className="w-16 h-16 mb-4" />
+          <h3 className="text-xl font-semibold text-foreground">No files found</h3>
+          <p>Your search for "{searchTerm}" did not match any files.</p>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col items-center justify-center text-center py-16 text-muted-foreground rounded-lg border-2 border-dashed">
         <UploadCloud className="w-16 h-16 mb-4" />
@@ -168,7 +191,7 @@ export function FileList({ currentFolderId, onSelectFile, toggleUploader }: File
       animate="visible"
     >
       <AnimatePresence>
-        {files.map(file => (
+        {filteredFiles.map(file => (
           <FileCard key={file.id} file={file} onSelect={onSelectFile} />
         ))}
       </AnimatePresence>

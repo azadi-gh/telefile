@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/sonner';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -8,7 +8,7 @@ import { FileList } from '@/components/FileExplorer/FileList';
 import { UploadDropzone } from '@/components/FileExplorer/UploadDropzone';
 import { FileInspector } from '@/components/FileExplorer/FileInspector';
 import { Button } from '@/components/ui/button';
-import { Settings, FileUp, PanelLeft } from 'lucide-react';
+import { Settings, FileUp, PanelLeft, Search, X } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,8 +26,12 @@ function SettingsSheet() {
   const { data: settings } = useQuery({
     queryKey: ['settings'],
     queryFn: () => api<AppSettings>('/api/settings'),
-    onSuccess: (data) => setToken(data.botToken || ''),
   });
+  useEffect(() => {
+    if (settings) {
+      setToken(settings.botToken || '');
+    }
+  }, [settings]);
   const updateSettingsMutation = useMutation({
     mutationFn: (newSettings: Partial<AppSettings>) => api<AppSettings>('/api/settings', { method: 'POST', body: JSON.stringify(newSettings) }),
     onSuccess: () => {
@@ -65,6 +69,8 @@ function FileExplorer() {
   const [selectedFile, setSelectedFile] = useState<TeleFile | null>(null);
   const [showUploader, setShowUploader] = useState(false);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showMobileSearch, setShowMobileSearch] = useState(false);
   const isMobile = useIsMobile();
   const queryClient = useTanstackQueryClient();
   const { data: folders } = useQuery<Folder[]>({ queryKey: ['folders'], queryFn: () => api('/api/folders') });
@@ -77,11 +83,11 @@ function FileExplorer() {
     setSelectedFile(null);
     if (isMobile) setSidebarOpen(false);
   };
-  const folderPane = <FolderPane selectedFolderId={currentFolderId} onSelectFolder={handleSelectFolder} />;
+  const folderPane = <FolderPane selectedFolderId={currentFolderId} onSelectFolder={handleSelectFolder} searchTerm={searchTerm} />;
   return (
     <div className="h-screen w-full flex flex-col bg-background text-foreground">
-      <header className="flex items-center justify-between p-2 md:p-4 border-b shrink-0">
-        <div className="flex items-center gap-2">
+      <header className="flex items-center justify-between p-2 md:p-4 border-b shrink-0 gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           {isMobile && (
             <Sheet open={isSidebarOpen} onOpenChange={setSidebarOpen}>
               <SheetTrigger asChild><Button variant="ghost" size="icon"><PanelLeft /></Button></SheetTrigger>
@@ -89,10 +95,27 @@ function FileExplorer() {
             </Sheet>
           )}
           <img src="/logo.svg" alt="TeleFile Logo" className="h-8 w-8" />
-          <h1 className="text-xl md:text-2xl font-bold font-display text-primary">TeleFile</h1>
-          {currentFolder && <Badge variant="secondary" className="hidden sm:inline-flex">{currentFolder.name}</Badge>}
+          <h1 className="text-xl md:text-2xl font-bold font-display text-primary hidden sm:block">TeleFile</h1>
         </div>
-        <div className="flex items-center gap-1 md:gap-2">
+        <div className="flex-1 flex justify-center px-4">
+          <AnimatePresence>
+            {isMobile && showMobileSearch ? (
+              <motion.div initial={{ width: 0, opacity: 0 }} animate={{ width: "100%", opacity: 1 }} exit={{ width: 0, opacity: 0 }} className="relative w-full">
+                <Input placeholder="Search all files..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full" />
+                <Button variant="ghost" size="icon" className="absolute right-0 top-0 h-full" onClick={() => setShowMobileSearch(false)}><X className="h-4 w-4" /></Button>
+              </motion.div>
+            ) : (
+              <div className="relative w-full max-w-md hidden md:block">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input placeholder="Search all files..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 w-full" />
+              </div>
+            )}
+          </AnimatePresence>
+        </div>
+        <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
+          {isMobile && !showMobileSearch && (
+            <Button variant="ghost" size="icon" onClick={() => setShowMobileSearch(true)}><Search className="h-5 w-5" /></Button>
+          )}
           <Button onClick={() => setShowUploader(s => !s)}><FileUp className="mr-0 md:mr-2 h-4 w-4" /> <span className="hidden md:inline">Upload</span></Button>
           <SettingsSheet />
           <ThemeToggle />
@@ -108,6 +131,14 @@ function FileExplorer() {
           )}
           <ResizablePanel defaultSize={selectedFile ? 50 : 80}>
             <div className="p-4 md:p-6 h-full overflow-y-auto">
+              <div className="mb-4">
+                <h2 className="text-2xl font-semibold tracking-tight">
+                  {searchTerm ? 'Search Results' : currentFolder ? currentFolder.name : 'Home'}
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  {searchTerm ? `Showing results for "${searchTerm}"` : currentFolder ? 'Files in this folder' : 'Files in your root directory'}
+                </p>
+              </div>
               <AnimatePresence>
                 {showUploader && (
                   <motion.div
@@ -120,12 +151,13 @@ function FileExplorer() {
                       currentFolderId={currentFolderId}
                       onUploadComplete={() => {
                         queryClient.invalidateQueries({ queryKey: ['files', currentFolderId] });
+                        queryClient.invalidateQueries({ queryKey: ['files', null] }); // Invalidate root for search
                       }}
                     />
                   </motion.div>
                 )}
               </AnimatePresence>
-              <FileList currentFolderId={currentFolderId} onSelectFile={handleSelectFile} toggleUploader={() => setShowUploader(true)} />
+              <FileList currentFolderId={currentFolderId} onSelectFile={handleSelectFile} toggleUploader={() => setShowUploader(true)} searchTerm={searchTerm} />
             </div>
           </ResizablePanel>
           <AnimatePresence>
@@ -151,11 +183,7 @@ function FileExplorer() {
 export function HomePage() {
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="max-w-7xl mx-auto">
-        <div className="py-0">
-          <FileExplorer />
-        </div>
-      </div>
+      <FileExplorer />
       <Toaster richColors closeButton />
     </QueryClientProvider>
   );

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 import type { Folder } from '@shared/types';
@@ -9,11 +9,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Folder as FolderIcon, PlusCircle, Home } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { motion } from 'framer-motion';
 interface FolderPaneProps {
   selectedFolderId: string | null;
   onSelectFolder: (folderId: string | null) => void;
+  searchTerm?: string;
 }
-export function FolderPane({ selectedFolderId, onSelectFolder }: FolderPaneProps) {
+export function FolderPane({ selectedFolderId, onSelectFolder, searchTerm }: FolderPaneProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const queryClient = useQueryClient();
@@ -38,6 +40,11 @@ export function FolderPane({ selectedFolderId, onSelectFolder }: FolderPaneProps
       createFolderMutation.mutate(newFolderName.trim());
     }
   };
+  const filteredFolders = useMemo(() => {
+    if (!folders) return [];
+    if (!searchTerm) return folders;
+    return folders.filter(folder => folder.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  }, [folders, searchTerm]);
   return (
     <div className="p-4 bg-secondary/50 rounded-lg h-full flex flex-col">
       <div className="flex justify-between items-center mb-4">
@@ -47,34 +54,40 @@ export function FolderPane({ selectedFolderId, onSelectFolder }: FolderPaneProps
         </Button>
       </div>
       <div className="flex-1 space-y-1 overflow-y-auto">
-        <Button
-          variant="ghost"
-          className={cn(
-            "w-full justify-start gap-2",
-            selectedFolderId === null && "bg-primary/10 text-primary"
-          )}
-          onClick={() => onSelectFolder(null)}
-        >
-          <Home className="w-4 h-4" />
-          <span>Home</span>
-        </Button>
+        <motion.div whileHover={{ scale: 1.02 }}>
+          <Button
+            variant="ghost"
+            className={cn(
+              "w-full justify-start gap-2",
+              selectedFolderId === null && "bg-primary/10 text-primary hover:bg-primary/20"
+            )}
+            onClick={() => onSelectFolder(null)}
+          >
+            <Home className="w-4 h-4" />
+            <span>Home</span>
+          </Button>
+        </motion.div>
         {isLoading ? (
           Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)
         ) : (
-          folders?.map(folder => (
-            <Button
-              key={folder.id}
-              variant="ghost"
-              className={cn(
-                "w-full justify-start gap-2",
-                selectedFolderId === folder.id && "bg-primary/10 text-primary"
-              )}
-              onClick={() => onSelectFolder(folder.id)}
-            >
-              <FolderIcon className="w-4 h-4" />
-              <span className="truncate">{folder.name}</span>
-            </Button>
+          filteredFolders.map(folder => (
+            <motion.div key={folder.id} whileHover={{ scale: 1.02 }}>
+              <Button
+                variant="ghost"
+                className={cn(
+                  "w-full justify-start gap-2",
+                  selectedFolderId === folder.id && "bg-primary/10 text-primary hover:bg-primary/20"
+                )}
+                onClick={() => onSelectFolder(folder.id)}
+              >
+                <FolderIcon className="w-4 h-4" />
+                <span className="truncate">{folder.name}</span>
+              </Button>
+            </motion.div>
           ))
+        )}
+        {searchTerm && filteredFolders.length === 0 && !isLoading && (
+          <p className="text-sm text-muted-foreground text-center p-4">No folders match your search.</p>
         )}
       </div>
       <Dialog open={isCreating} onOpenChange={setIsCreating}>
@@ -92,7 +105,7 @@ export function FolderPane({ selectedFolderId, onSelectFolder }: FolderPaneProps
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreating(false)}>Cancel</Button>
-            <Button onClick={handleCreateFolder} disabled={createFolderMutation.isPending}>
+            <Button onClick={handleCreateFolder} disabled={createFolderMutation.isPending || !newFolderName.trim()}>
               {createFolderMutation.isPending ? 'Creating...' : 'Create'}
             </Button>
           </DialogFooter>
