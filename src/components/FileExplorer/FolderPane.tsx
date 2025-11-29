@@ -4,7 +4,7 @@ import { api } from '@/lib/api-client';
 import type { Folder } from '@shared/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Folder as FolderIcon, PlusCircle, Home } from 'lucide-react';
 import { toast } from 'sonner';
@@ -95,7 +95,7 @@ export function FolderPane({ selectedFolderId, onSelectFolder, searchTerm }: Fol
           <DialogHeader>
             <DialogTitle>Create New Folder</DialogTitle>
           </DialogHeader>
-          <p id="create-folder-desc" className="sr-only">Enter a new folder name and press Create or Cancel.</p>
+          <DialogDescription id="create-folder-desc" className="sr-only">Enter a new folder name and press Create or Cancel.</DialogDescription>
           <div className="py-4">
             <Input
               placeholder="Folder name"

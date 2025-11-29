@@ -160,14 +160,47 @@ export function FileInspector({ file, onClose }: FileInspectorProps) {
             )}
           </div>
           {/* Dialogs */}
-          <Dialog open={isRenaming} onOpenChange={setIsRenaming}><DialogContent aria-describedby="rename-dialog-desc"><DialogHeader><DialogTitle>Rename File</DialogTitle></DialogHeader><p id="rename-dialog-desc" className="sr-only">Enter a new name for the file and press Save or Cancel.</p><Input value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleRename()} /><DialogFooter><Button variant="outline" onClick={() => setIsRenaming(false)}>Cancel</Button><Button onClick={handleRename}>Save</Button></DialogFooter></DialogContent></Dialog>
-          <Dialog open={isMoving} onOpenChange={setIsMoving}><DialogContent aria-describedby="move-dialog-desc"><DialogHeader><DialogTitle>Move File</DialogTitle></DialogHeader>
-            <p id="move-dialog-desc" className="sr-only">Select a destination folder for the file and press Move to confirm.</p>
-            <Select onValueChange={(v) => setTargetFolderId(v === 'root' ? null : v)} defaultValue={file.folderId || 'root'}>
-              <SelectTrigger><SelectValue placeholder="Select a folder..." /></SelectTrigger>
-              <SelectContent><SelectItem value="root">Home (Root)</SelectItem>{folders?.map(f => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}</SelectContent>
-            </Select>
-          <DialogFooter><Button variant="outline" onClick={() => setIsMoving(false)}>Cancel</Button><Button onClick={handleMove}>Move</Button></DialogFooter></DialogContent></Dialog>
+          <Dialog open={isRenaming} onOpenChange={setIsRenaming}>
+            <DialogContent aria-describedby="rename-dialog-desc">
+              <DialogHeader>
+                <DialogTitle>Rename File</DialogTitle>
+              </DialogHeader>
+              <p id="rename-dialog-desc" className="sr-only">Enter a new name for the file and press Save or Cancel.</p>
+              <Input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleRename()}
+              />
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsRenaming(false)}>Cancel</Button>
+                <Button onClick={handleRename}>Save</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Dialog open={isMoving} onOpenChange={setIsMoving}>
+            <DialogContent aria-describedby="move-dialog-desc">
+              <DialogHeader>
+                <DialogTitle>Move File</DialogTitle>
+              </DialogHeader>
+              <p id="move-dialog-desc" className="sr-only">Select a destination folder for the file and press Move to confirm.</p>
+              <Select
+                onValueChange={(v) => setTargetFolderId(v === 'root' ? null : v)}
+                defaultValue={file.folderId || 'root'}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a folder..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="root">Home (Root)</SelectItem>
+                  {folders?.map(f => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsMoving(false)}>Cancel</Button>
+                <Button onClick={handleMove}>Move</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <AlertDialog open={isDeleting} onOpenChange={setIsDeleting}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete "{file.name}" ({formatBytes(file.size)}).</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => deleteMutation.mutate()} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
         </motion.div>
       )}

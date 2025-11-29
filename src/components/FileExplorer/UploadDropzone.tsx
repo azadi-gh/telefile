@@ -1,5 +1,5 @@
-import React, { useCallback, useState } from 'react'
-import { useDropzone } from 'react-dropzone'
+import React, { useCallback, useState, useRef } from 'react'
+
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -110,21 +110,56 @@ export function UploadDropzone({ currentFolderId, onUploadComplete }: UploadDrop
     setItems(prev => prev.map(p => (p.id === newItem.id ? { ...p, progress: 10 } : p)))
     uploadMutation.mutate(formData)
   }, [url, currentFolderId, uploadMutation]);
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, multiple: true })
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+const [isDragActive, setIsDragActive] = useState(false)
+
+const onFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const files = e.target.files ? Array.from(e.target.files) : []
+  if (files.length) onDrop(files)
+}
+
+const rootProps = {
+  onDragOver: (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragActive(true)
+  },
+  onDragEnter: (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragActive(true)
+  },
+  onDragLeave: (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragActive(false)
+  },
+  onDrop: (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragActive(false)
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length) onDrop(files)
+  },
+  onClick: () => fileInputRef.current?.click(),
+}
+
+const inputProps = {
+  ref: fileInputRef,
+  multiple: true,
+  onChange: onFileInputChange,
+  type: 'file' as const,
+}
   const removeItem = (id: string) => {
     setItems(prev => prev.filter(item => item.id !== id))
   }
   return (
     <div className="space-y-4">
       <Card
-        {...getRootProps()}
+        {...rootProps}
         className={cn(
           'border-2 border-dashed hover:border-primary/80 transition-colors duration-200 cursor-pointer',
           isDragActive && 'border-primary bg-primary/10'
         )}
       >
         <CardContent className="p-6 text-center">
-          <input {...getInputProps()} />
+          <input {...inputProps} />
           <div className="flex flex-col items-center justify-center space-y-2 text-muted-foreground">
             <UploadCloud className="w-12 h-12" />
             <p className="text-lg font-medium">
