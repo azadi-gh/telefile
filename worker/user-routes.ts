@@ -3,7 +3,6 @@ import type { Env } from './core-utils';
 import { FolderEntity, FileEntity, AppSettingsEntity, UserEntity, ChatBoardEntity } from "./entities";
 import { ok, bad, notFound, isStr } from './core-utils';
 import type { AppSettings, File as TeleFile, Folder } from "@shared/types";
-// Helper to convert ArrayBuffer to Base64
 const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
   let binary = '';
   const bytes = new Uint8Array(buffer);
@@ -13,7 +12,6 @@ const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
   }
   return btoa(binary);
 };
-// Helper to convert Base64 to ArrayBuffer
 const base64ToArrayBuffer = (base64: string) => {
   const binary_string = atob(base64);
   const len = binary_string.length;
@@ -74,9 +72,30 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
   app.post('/api/upload', async (c) => {
     try {
       const formData = await c.req.formData();
-      const file = formData.get('file') as File; // Cast to File to access .name property
       const folderId = formData.get('folderId') as string | null;
-      if (!file) return bad(c, 'File is required');
+      let file: File | null = formData.get('file') as File | null;
+      const url = formData.get('url') as string | null;
+      if (url && !file) {
+        try {
+          const response = await fetch(url, {
+            headers: {
+              'User-Agent': 'Cloudflare-Worker/1.0',
+              'Accept': '*/*'
+            },
+          });
+          if (!response.ok) return bad(c, `Failed to fetch URL: ${response.statusText}`);
+          const blob = await response.blob();
+          if (blob.size > 2 * 1024 * 1024) return bad(c, 'File from URL is too large (max 2MB).');
+          const contentType = response.headers.get('content-type') || blob.type || 'application/octet-stream';
+          const path = new URL(url).pathname;
+          const filename = path.substring(path.lastIndexOf('/') + 1) || `downloaded-file`;
+          file = new File([blob], filename, { type: contentType });
+        } catch (e) {
+          console.error('URL Fetch failed:', e);
+          return bad(c, 'Invalid URL or failed to fetch file.');
+        }
+      }
+      if (!file) return bad(c, 'File or URL is required');
       if (file.size > 2 * 1024 * 1024) return bad(c, 'File size exceeds 2MB demo limit.');
       const fileId = crypto.randomUUID();
       const fileBuffer = await file.arrayBuffer();
@@ -106,6 +125,8 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
           if (tgRes.ok && tgRes.result?.document) {
             await fileEntity.markAsForwarded(tgRes.result.document.file_id, tgRes.result.document.file_name);
           }
+        } else {
+          console.error("Telegram API Error:", await res.text());
         }
       }
       return ok(c, await fileEntity.getState());

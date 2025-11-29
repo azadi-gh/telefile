@@ -1,77 +1,110 @@
-import React, { useCallback, useState } from 'react';
-import { useDropzone } from 'react-dropzone';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
-import { UploadCloud, X, File as FileIcon } from 'lucide-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api-client';
-import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
-import type { File as TeleFile } from '@shared/types';
+import React, 'useCallback, useState'
+import { useDropzone } from 'react-dropzone'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
+import { UploadCloud, X, File as FileIcon, Link as LinkIcon, Send } from 'lucide-react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
+import { Input } from '@/components/ui/input'
+import { motion } from 'framer-motion'
 interface UploadDropzoneProps {
-  currentFolderId: string | null;
-  onUploadComplete: () => void;
+  currentFolderId: string | null
+  onUploadComplete: () => void
 }
-interface UploadableFile {
-  file: File;
-  progress: number;
-  error?: string;
+interface UploadableItem {
+  id: string
+  name: string
+  size?: number
+  progress: number
+  error?: string
+  source: 'file' | 'url'
 }
 export function UploadDropzone({ currentFolderId, onUploadComplete }: UploadDropzoneProps) {
-  const [files, setFiles] = useState<UploadableFile[]>([]);
-  const queryClient = useQueryClient();
+  const [items, setItems] = useState<UploadableItem[]>([])
+  const [url, setUrl] = useState('')
+  const queryClient = useQueryClient()
   const uploadMutation = useMutation({
-    mutationFn: async (fileWithFolder: { file: File, folderId: string | null }) => {
-      const formData = new FormData();
-      formData.append('file', fileWithFolder.file);
-      if (fileWithFolder.folderId) {
-        formData.append('folderId', fileWithFolder.folderId);
-      }
-      // We don't use the generic `api` helper here because it's for JSON APIs.
-      // We need to handle FormData and potential progress events manually.
+    mutationFn: async (formData: FormData) => {
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
-      });
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Upload failed');
+      })
+      const json = await response.json()
+      if (!response.ok || !json.success) {
+        throw new Error(json.error || 'Upload failed')
       }
-      return response.json();
+      return json.data
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['files', currentFolderId] });
-      onUploadComplete();
-      toast.success('File uploaded successfully!');
+    onSuccess: (data, variables) => {
+      const id = variables.get('id') as string
+      setItems(prev => prev.map(item => (item.id === id ? { ...item, progress: 100 } : item)))
+      setTimeout(() => {
+        setItems(prev => prev.filter(item => item.id !== id))
+      }, 1000)
+      queryClient.invalidateQueries({ queryKey: ['files', currentFolderId] })
+      onUploadComplete()
+      toast.success('File uploaded successfully!')
     },
     onError: (error: Error, variables) => {
-      setFiles(prev => prev.map(f => f.file === variables.file ? { ...f, error: error.message } : f));
-      toast.error(`Upload failed: ${error.message}`);
+      const id = variables.get('id') as string
+      setItems(prev => prev.map(item => (item.id === id ? { ...item, error: error.message, progress: 0 } : item)))
+      toast.error(`Upload failed: ${error.message}`)
     },
-  });
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    const newFiles: UploadableFile[] = acceptedFiles.map(file => ({ file, progress: 0 }));
-    setFiles(prev => [...prev, ...newFiles]);
-    newFiles.forEach(f => {
-      // Simulate progress for demo purposes, as XMLHttpRequest is needed for real progress
-      // and fetch API doesn't support it directly.
-      // In a real app, you'd use XHR or a library that wraps it.
-      setFiles(prev => prev.map(p => p.file === f.file ? { ...p, progress: 50 } : p));
-      uploadMutation.mutate({ file: f.file, folderId: currentFolderId }, {
-        onSuccess: () => {
-          setFiles(prev => prev.map(p => p.file === f.file ? { ...p, progress: 100 } : p));
-          setTimeout(() => {
-            setFiles(prev => prev.filter(p => p.file !== f.file));
-          }, 1000);
-        },
-      });
-    });
-  }, [currentFolderId, uploadMutation]);
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, multiple: true });
-  const removeFile = (file: File) => {
-    setFiles(prev => prev.filter(f => f.file !== file));
-  };
+  })
+  const onDrop = useCallback(
+    (acceptedFiles: File[]) => {
+      const newItems: UploadableItem[] = acceptedFiles.map(file => ({
+        id: crypto.randomUUID(),
+        name: file.name,
+        size: file.size,
+        progress: 0,
+        source: 'file',
+      }))
+      setItems(prev => [...prev, ...newItems])
+      newItems.forEach((item, index) => {
+        const file = acceptedFiles[index]
+        const formData = new FormData()
+        formData.append('file', file)
+        if (currentFolderId) {
+          formData.append('folderId', currentFolderId)
+        }
+        formData.append('id', item.id)
+        setItems(prev => prev.map(p => (p.id === item.id ? { ...p, progress: 50 } : p)))
+        uploadMutation.mutate(formData)
+      })
+    },
+    [currentFolderId, uploadMutation]
+  )
+  const handleUrlUpload = () => {
+    try {
+      new URL(url)
+    } catch (e) {
+      toast.error('Invalid URL provided.')
+      return
+    }
+    const newItem: UploadableItem = {
+      id: crypto.randomUUID(),
+      name: url,
+      progress: 0,
+      source: 'url',
+    }
+    setItems(prev => [...prev, newItem])
+    setUrl('')
+    const formData = new FormData()
+    formData.append('url', url)
+    if (currentFolderId) {
+      formData.append('folderId', currentFolderId)
+    }
+    formData.append('id', newItem.id)
+    setItems(prev => prev.map(p => (p.id === newItem.id ? { ...p, progress: 50 } : p)))
+    uploadMutation.mutate(formData)
+  }
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, multiple: true })
+  const removeItem = (id: string) => {
+    setItems(prev => prev.filter(item => item.id !== id))
+  }
   return (
     <div className="space-y-4">
       <Card
@@ -92,21 +125,53 @@ export function UploadDropzone({ currentFolderId, onUploadComplete }: UploadDrop
           </div>
         </CardContent>
       </Card>
-      {files.length > 0 && (
+      <motion.div
+        className="relative"
+        whileHover={{ scale: 1.02 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 10 }}
+      >
+        <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Or paste a URL to upload"
+          className="pl-9"
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleUrlUpload()}
+        />
+        <Button
+          size="sm"
+          className="absolute right-1 top-1/2 -translate-y-1/2 h-8"
+          onClick={handleUrlUpload}
+          disabled={!url.trim() || uploadMutation.isPending}
+        >
+          <Send className="h-4 w-4" />
+        </Button>
+      </motion.div>
+      {items.length > 0 && (
         <div className="space-y-2">
           <h4 className="font-medium">Uploading Files</h4>
-          {files.map(({ file, progress, error }, index) => (
-            <Card key={index} className={cn("p-2", error && "bg-destructive/10 border-destructive")}>
+          {items.map(({ id, name, size, progress, error, source }) => (
+            <Card key={id} className={cn('p-2', error && 'bg-destructive/10 border-destructive')}>
               <div className="flex items-center gap-3">
-                <FileIcon className="w-6 h-6 text-muted-foreground" />
+                {source === 'file' ? (
+                  <FileIcon className="w-6 h-6 text-muted-foreground" />
+                ) : (
+                  <LinkIcon className="w-6 h-6 text-muted-foreground" />
+                )}
                 <div className="flex-1">
-                  <p className="text-sm font-medium truncate">{file.name}</p>
+                  <p className="text-sm font-medium truncate">{name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {error ? <span className="text-destructive">{error}</span> : `${(file.size / 1024).toFixed(1)} KB`}
+                    {error ? (
+                      <span className="text-destructive">{error}</span>
+                    ) : size ? (
+                      `${(size / 1024).toFixed(1)} KB`
+                    ) : (
+                      'Fetching from URL...'
+                    )}
                   </p>
                   {!error && <Progress value={progress} className="h-1 mt-1" />}
                 </div>
-                <Button variant="ghost" size="icon" className="w-6 h-6" onClick={() => removeFile(file)}>
+                <Button variant="ghost" size="icon" className="w-6 h-6" onClick={() => removeItem(id)}>
                   <X className="w-4 h-4" />
                 </Button>
               </div>
@@ -115,5 +180,5 @@ export function UploadDropzone({ currentFolderId, onUploadComplete }: UploadDrop
         </div>
       )}
     </div>
-  );
+  )
 }
