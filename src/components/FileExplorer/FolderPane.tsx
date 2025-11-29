@@ -91,10 +91,11 @@ export function FolderPane({ selectedFolderId, onSelectFolder, searchTerm }: Fol
         )}
       </div>
       <Dialog open={isCreating} onOpenChange={setIsCreating}>
-        <DialogContent>
+        <DialogContent aria-describedby="create-folder-desc">
           <DialogHeader>
             <DialogTitle>Create New Folder</DialogTitle>
           </DialogHeader>
+          <p id="create-folder-desc" className="sr-only">Enter a new folder name and press Create or Cancel.</p>
           <div className="py-4">
             <Input
               placeholder="Folder name"
