@@ -44,8 +44,8 @@ export class FileEntity extends IndexedEntity<File> {
 export class AppSettingsEntity extends IndexedEntity<AppSettings> {
   static readonly entityName = "settings";
   static readonly indexName = "settings"; // Not really used for a singleton
-  static readonly initialState: AppSettings = { id: "app", mockMode: true };
-  static seedData: readonly AppSettings[] = [{ id: 'app', mockMode: true }];
+  static readonly initialState: AppSettings = { id: "app", mockMode: true, botToken: '', channelId: '' };
+  static seedData: readonly AppSettings[] = [{ id: 'app', mockMode: true, botToken: '', channelId: '' }];
 }
 // --- Template Entities Below ---
 // USER ENTITY: one DO instance per user

@@ -160,8 +160,9 @@ export function FileInspector({ file, onClose }: FileInspectorProps) {
             )}
           </div>
           {/* Dialogs */}
-          <Dialog open={isRenaming} onOpenChange={setIsRenaming}><DialogContent><DialogHeader><DialogTitle>Rename File</DialogTitle></DialogHeader><Input value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleRename()} /><DialogFooter><Button variant="outline" onClick={() => setIsRenaming(false)}>Cancel</Button><Button onClick={handleRename}>Save</Button></DialogFooter></DialogContent></Dialog>
-          <Dialog open={isMoving} onOpenChange={setIsMoving}><DialogContent><DialogHeader><DialogTitle>Move File</DialogTitle></DialogHeader>
+          <Dialog open={isRenaming} onOpenChange={setIsRenaming}><DialogContent aria-describedby="rename-dialog-desc"><DialogHeader><DialogTitle>Rename File</DialogTitle></DialogHeader><p id="rename-dialog-desc" className="sr-only">Enter a new name for the file and press Save or Cancel.</p><Input value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleRename()} /><DialogFooter><Button variant="outline" onClick={() => setIsRenaming(false)}>Cancel</Button><Button onClick={handleRename}>Save</Button></DialogFooter></DialogContent></Dialog>
+          <Dialog open={isMoving} onOpenChange={setIsMoving}><DialogContent aria-describedby="move-dialog-desc"><DialogHeader><DialogTitle>Move File</DialogTitle></DialogHeader>
+            <p id="move-dialog-desc" className="sr-only">Select a destination folder for the file and press Move to confirm.</p>
             <Select onValueChange={(v) => setTargetFolderId(v === 'root' ? null : v)} defaultValue={file.folderId || 'root'}>
               <SelectTrigger><SelectValue placeholder="Select a folder..." /></SelectTrigger>
               <SelectContent><SelectItem value="root">Home (Root)</SelectItem>{folders?.map(f => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}</SelectContent>

@@ -113,20 +113,26 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
       await fileEntity.saveContent(base64Content);
       const settingsEntity = new AppSettingsEntity(c.env, 'app');
       const settings = await settingsEntity.getState();
-      if (settings.botToken) {
+      // Only attempt Telegram send when both botToken and channelId are configured.
+      if (settings.botToken && settings.channelId) {
         const tgFormData = new FormData();
         tgFormData.append('document', file, file.name);
-        const res = await fetch(`https://api.telegram.org/bot${settings.botToken}/sendDocument`, {
-          method: 'POST',
-          body: tgFormData,
-        });
-        if (res.ok) {
-          const tgRes = await res.json<{ ok: boolean, result?: { document?: { file_id: string, file_name?: string } } }>();
-          if (tgRes.ok && tgRes.result?.document) {
-            await fileEntity.markAsForwarded(tgRes.result.document.file_id, tgRes.result.document.file_name);
+        const tgUrl = `https://api.telegram.org/bot${settings.botToken}/sendDocument?chat_id=${encodeURIComponent(settings.channelId)}`;
+        try {
+          const res = await fetch(tgUrl, {
+            method: 'POST',
+            body: tgFormData,
+          });
+          if (res.ok) {
+            const tgRes = await res.json<{ ok: boolean, result?: { document?: { file_id: string, file_name?: string } } }>();
+            if (tgRes.ok && tgRes.result?.document) {
+              await fileEntity.markAsForwarded(tgRes.result.document.file_id, tgRes.result.document.file_name);
+            }
+          } else {
+            console.error("Telegram API Error:", await res.text());
           }
-        } else {
-          console.error("Telegram API Error:", await res.text());
+        } catch (e) {
+          console.error("Telegram send failed:", e);
         }
       }
       return ok(c, await fileEntity.getState());
@@ -158,7 +164,8 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     if (!(await fileEntity.exists())) return notFound(c, 'File not found');
     const settingsEntity = new AppSettingsEntity(c.env, 'app');
     const settings = await settingsEntity.getState();
-    if (!settings.botToken) return bad(c, 'Telegram Bot Token is not configured.');
+    // Require both botToken and channelId for forwarding
+    if (!settings.botToken || !settings.channelId) return bad(c, 'Telegram Bot Token or Channel ID is not configured.');
     const fileState = await fileEntity.getState();
     if (fileState.telegram?.file_id) return ok(c, fileState); // Already forwarded
     const content = await fileEntity.getContent();
@@ -167,7 +174,8 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     const blob = new Blob([buffer], { type: fileState.mime });
     const tgFormData = new FormData();
     tgFormData.append('document', blob, fileState.name);
-    const res = await fetch(`https://api.telegram.org/bot${settings.botToken}/sendDocument`, {
+    const tgUrl = `https://api.telegram.org/bot${settings.botToken}/sendDocument?chat_id=${encodeURIComponent(settings.channelId)}`;
+    const res = await fetch(tgUrl, {
       method: 'POST',
       body: tgFormData,
     });
@@ -192,7 +200,7 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
   app.post('/api/settings', async (c) => {
     const body = await c.req.json<Partial<AppSettings>>();
     const settings = new AppSettingsEntity(c.env, 'app');
-    await settings.patch({ botToken: body.botToken, mockMode: body.mockMode });
+    await settings.patch({ botToken: body.botToken, channelId: body.channelId, mockMode: body.mockMode });
     return ok(c, await settings.getState());
   });
   // --- Template Routes Below ---

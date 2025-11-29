@@ -23,6 +23,7 @@ const queryClient = new QueryClient();
 function SettingsSheet() {
   const tanstackQueryClient = useTanstackQueryClient();
   const [token, setToken] = useState('');
+  const [channelId, setChannelId] = useState('');
   const { data: settings } = useQuery({
     queryKey: ['settings'],
     queryFn: () => api<AppSettings>('/api/settings'),
@@ -30,6 +31,7 @@ function SettingsSheet() {
   useEffect(() => {
     if (settings) {
       setToken(settings.botToken || '');
+      setChannelId(settings.channelId || '');
     }
   }, [settings]);
   const updateSettingsMutation = useMutation({
@@ -41,7 +43,7 @@ function SettingsSheet() {
     onError: (error) => toast.error(`Failed to save settings: ${error.message}`),
   });
   const handleSave = () => {
-    updateSettingsMutation.mutate({ botToken: token });
+    updateSettingsMutation.mutate({ botToken: token, channelId });
   };
   return (
     <Sheet>
@@ -55,6 +57,11 @@ function SettingsSheet() {
             <Label htmlFor="bot-token">Telegram Bot Token</Label>
             <Input id="bot-token" type="password" placeholder="Your bot token" value={token} onChange={(e) => setToken(e.target.value)} />
             <p className="text-xs text-muted-foreground">Get this from BotFather on Telegram. Your token is stored securely.</p>
+            <div className="space-y-2">
+              <Label htmlFor="channel-id">Channel ID</Label>
+              <Input id="channel-id" placeholder="@channel or -1001234567890" value={channelId} onChange={(e) => setChannelId(e.target.value)} />
+              <p className="text-xs text-muted-foreground">The target channel for uploads. Use a username like @mychannel or the numeric ID e.g. -1001234567890.</p>
+            </div>
           </div>
           <Button onClick={handleSave} disabled={updateSettingsMutation.isPending}>
             {updateSettingsMutation.isPending ? 'Saving...' : 'Save Settings'}

@@ -25,6 +25,7 @@ export interface File {
 export interface AppSettings {
   id: 'app'; // Singleton ID
   botToken?: string;
+  channelId?: string;
   mockMode?: boolean;
 }
 // Minimal real-world chat example types (shared by frontend and worker) - from template
