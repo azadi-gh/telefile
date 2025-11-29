@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env } from './core-utils';
 import { FolderEntity, FileEntity, AppSettingsEntity, UserEntity, ChatBoardEntity } from "./entities";
 import { ok, bad, notFound, isStr } from './core-utils';
-import type { AppSettings, File as TeleFile } from "@shared/types";
+import type { AppSettings, File as TeleFile, Folder } from "@shared/types";
 // Helper to convert ArrayBuffer to Base64
 const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
   let binary = '';
@@ -12,6 +12,16 @@ const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
     binary += String.fromCharCode(bytes[i]);
   }
   return btoa(binary);
+};
+// Helper to convert Base64 to ArrayBuffer
+const base64ToArrayBuffer = (base64: string) => {
+  const binary_string = atob(base64);
+  const len = binary_string.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binary_string.charCodeAt(i);
+  }
+  return bytes.buffer;
 };
 export function userRoutes(app: Hono<{ Bindings: Env }>) {
   // --- TeleFile Routes ---
@@ -42,6 +52,17 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     const id = c.req.param('id');
     const file = new FileEntity(c.env, id);
     if (!(await file.exists())) return notFound(c, 'File not found');
+    return ok(c, await file.getState());
+  });
+  app.patch('/api/files/:id', async (c) => {
+    const id = c.req.param('id');
+    const { name, folderId } = await c.req.json<{ name?: string, folderId?: string | null }>();
+    const file = new FileEntity(c.env, id);
+    if (!(await file.exists())) return notFound(c, 'File not found');
+    const patch: Partial<TeleFile> = {};
+    if (name) patch.name = name;
+    if (folderId !== undefined) patch.folderId = folderId;
+    await file.patch(patch);
     return ok(c, await file.getState());
   });
   app.delete('/api/files/:id', async (c) => {
@@ -93,6 +114,55 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
       return bad(c, 'Upload failed. Please try again.');
     }
   });
+  // FILE ACTIONS
+  app.get('/api/files/:id/download', async (c) => {
+    const id = c.req.param('id');
+    const file = new FileEntity(c.env, id);
+    if (!(await file.exists())) return notFound(c, 'File not found');
+    const content = await file.getContent();
+    if (!content) return bad(c, 'File has no content to download.');
+    const state = await file.getState();
+    const buffer = base64ToArrayBuffer(content);
+    return new Response(buffer, {
+      headers: {
+        'Content-Type': state.mime || 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="${state.name}"`,
+        'Content-Length': buffer.byteLength.toString(),
+      }
+    });
+  });
+  app.post('/api/files/:id/forward', async (c) => {
+    const id = c.req.param('id');
+    const fileEntity = new FileEntity(c.env, id);
+    if (!(await fileEntity.exists())) return notFound(c, 'File not found');
+    const settingsEntity = new AppSettingsEntity(c.env, 'app');
+    const settings = await settingsEntity.getState();
+    if (!settings.botToken) return bad(c, 'Telegram Bot Token is not configured.');
+    const fileState = await fileEntity.getState();
+    if (fileState.telegram?.file_id) return ok(c, fileState); // Already forwarded
+    const content = await fileEntity.getContent();
+    if (!content) return bad(c, 'File has no content to forward.');
+    const buffer = base64ToArrayBuffer(content);
+    const blob = new Blob([buffer], { type: fileState.mime });
+    const tgFormData = new FormData();
+    tgFormData.append('document', blob, fileState.name);
+    const res = await fetch(`https://api.telegram.org/bot${settings.botToken}/sendDocument`, {
+      method: 'POST',
+      body: tgFormData,
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error('Telegram API error:', errorText);
+      return bad(c, `Failed to forward to Telegram: ${res.statusText}`);
+    }
+    const tgRes = await res.json<{ ok: boolean, result?: { document?: { file_id: string, file_name?: string } } }>();
+    if (tgRes.ok && tgRes.result?.document) {
+      await fileEntity.markAsForwarded(tgRes.result.document.file_id, tgRes.result.document.file_name);
+    } else {
+      return bad(c, 'Telegram API returned an error.');
+    }
+    return ok(c, await fileEntity.getState());
+  });
   // SETTINGS
   app.get('/api/settings', async (c) => {
     const settings = new AppSettingsEntity(c.env, 'app');
@@ -105,7 +175,12 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     return ok(c, await settings.getState());
   });
   // --- Template Routes Below ---
-  app.get('/api/test', (c) => c.json({ success: true, data: { name: 'CF Workers Demo' }}));
+  app.get('/api/health', async (c) => {
+    await FolderEntity.ensureSeed(c.env);
+    await FileEntity.ensureSeed(c.env);
+    await AppSettingsEntity.ensureSeed(c.env);
+    return c.json({ success: true, data: { status: 'healthy', timestamp: new Date().toISOString() }});
+  });
   // USERS
   app.get('/api/users', async (c) => {
     await UserEntity.ensureSeed(c.env);
