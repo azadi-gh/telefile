@@ -1,148 +1,123 @@
-// Home page of the app, Currently a demo page for demonstration.
-// Please rewrite this file to implement your own logic. Do not replace or delete it, simply rewrite this HomePage.tsx file.
-import { useEffect } from 'react'
-import { Sparkles } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { ThemeToggle } from '@/components/ThemeToggle'
-import { Toaster, toast } from '@/components/ui/sonner'
-import { create } from 'zustand'
-import { useShallow } from 'zustand/react/shallow'
-import { AppLayout } from '@/components/layout/AppLayout'
-
-// Timer store: independent slice with a clear, minimal API, for demonstration
-type TimerState = {
-  isRunning: boolean;
-  elapsedMs: number;
-  start: () => void;
-  pause: () => void;
-  reset: () => void;
-  tick: (deltaMs: number) => void;
-}
-
-const useTimerStore = create<TimerState>((set) => ({
-  isRunning: false,
-  elapsedMs: 0,
-  start: () => set({ isRunning: true }),
-  pause: () => set({ isRunning: false }),
-  reset: () => set({ elapsedMs: 0, isRunning: false }),
-  tick: (deltaMs) => set((s) => ({ elapsedMs: s.elapsedMs + deltaMs })),
-}))
-
-// Counter store: separate slice to showcase multiple stores without coupling
-type CounterState = {
-  count: number;
-  inc: () => void;
-  reset: () => void;
-}
-
-const useCounterStore = create<CounterState>((set) => ({
-  count: 0,
-  inc: () => set((s) => ({ count: s.count + 1 })),
-  reset: () => set({ count: 0 }),
-}))
-
-function formatDuration(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000))
-  const m = Math.floor(total / 60)
-  const s = total % 60
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
-
-export function HomePage() {
-  // Select only what is needed to avoid unnecessary re-renders
-  const { isRunning, elapsedMs } = useTimerStore(
-    useShallow((s) => ({ isRunning: s.isRunning, elapsedMs: s.elapsedMs })),
-  )
-  const start = useTimerStore((s) => s.start)
-  const pause = useTimerStore((s) => s.pause)
-  const resetTimer = useTimerStore((s) => s.reset)
-  const count = useCounterStore((s) => s.count)
-  const inc = useCounterStore((s) => s.inc)
-  const resetCount = useCounterStore((s) => s.reset)
-
-  // Drive the timer only while running; avoid update-depth issues with a scoped RAF
-  useEffect(() => {
-    if (!isRunning) return
-    let raf = 0
-    let last = performance.now()
-    const loop = () => {
-      const now = performance.now()
-      const delta = now - last
-      last = now
-      // Read store API directly to keep effect deps minimal and stable
-      useTimerStore.getState().tick(delta)
-      raf = requestAnimationFrame(loop)
-    }
-    raf = requestAnimationFrame(loop)
-    return () => cancelAnimationFrame(raf)
-  }, [isRunning])
-
-  const onPleaseWait = () => {
-    inc()
-    if (!isRunning) {
-      start()
-      toast.success('Building your app…', {
-        description: 'Hang tight, we\'re setting everything up.',
-      })
-    } else {
-      pause()
-      toast.info('Taking a short pause', {
-        description: 'We\'ll continue shortly.',
-      })
-    }
-  }
-
-  const formatted = formatDuration(elapsedMs)
-
+import React, { useState } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Toaster } from '@/components/ui/sonner';
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
+import { FolderPane } from '@/components/FileExplorer/FolderPane';
+import { FileList } from '@/components/FileExplorer/FileList';
+import { UploadDropzone } from '@/components/FileExplorer/UploadDropzone';
+import { Button } from '@/components/ui/button';
+import { Settings, FileUp } from 'lucide-react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { api } from '@/lib/api-client';
+import { useQuery, useMutation, useQueryClient as useTanstackQueryClient } from '@tanstack/react-query';
+import type { AppSettings } from '@shared/types';
+import { toast } from 'sonner';
+const queryClient = new QueryClient();
+function SettingsSheet() {
+  const tanstackQueryClient = useTanstackQueryClient();
+  const [token, setToken] = useState('');
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api<AppSettings>('/api/settings'),
+    onSuccess: (data) => {
+      if (data.botToken) setToken(data.botToken);
+    },
+  });
+  const updateSettingsMutation = useMutation({
+    mutationFn: (newSettings: Partial<AppSettings>) => api<AppSettings>('/api/settings', { method: 'POST', body: JSON.stringify(newSettings) }),
+    onSuccess: () => {
+      tanstackQueryClient.invalidateQueries({ queryKey: ['settings'] });
+      toast.success('Settings saved!');
+    },
+    onError: (error) => {
+      toast.error(`Failed to save settings: ${error.message}`);
+    },
+  });
+  const handleSave = () => {
+    updateSettingsMutation.mutate({ botToken: token });
+  };
   return (
-    <AppLayout>
-      <div className="min-h-screen flex flex-col items-center justify-center bg-background text-foreground p-4 overflow-hidden relative">
-        <ThemeToggle />
-        <div className="absolute inset-0 bg-gradient-rainbow opacity-10 dark:opacity-20 pointer-events-none" />
-        <div className="text-center space-y-8 relative z-10 animate-fade-in">
-          <div className="flex justify-center">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-primary floating">
-              <Sparkles className="w-8 h-8 text-white rotating" />
-            </div>
+    <Sheet>
+      <SheetTrigger asChild>
+        <Button variant="ghost" size="icon">
+          <Settings className="w-5 h-5" />
+        </Button>
+      </SheetTrigger>
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Settings</SheetTitle>
+        </SheetHeader>
+        <div className="py-6 space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="bot-token">Telegram Bot Token</Label>
+            <Input id="bot-token" type="password" placeholder="Your bot token" value={token} onChange={(e) => setToken(e.target.value)} />
+            <p className="text-xs text-muted-foreground">
+              Get this from BotFather on Telegram. Your token is stored securely and never exposed to the client.
+            </p>
           </div>
-          <h1 className="text-5xl md:text-7xl font-display font-bold text-balance leading-tight">
-            Creating your <span className="text-gradient">app</span>
-          </h1>
-          <p className="text-lg md:text-xl text-muted-foreground max-w-xl mx-auto text-pretty">
-            Your application would be ready soon.
-          </p>
-          <div className="flex justify-center gap-4">
-            <Button 
-              size="lg"
-              onClick={onPleaseWait}
-              className="btn-gradient px-8 py-4 text-lg font-semibold hover:-translate-y-0.5 transition-all duration-200"
-              aria-live="polite"
-            >
-              Please Wait
-            </Button>
-          </div>
-          <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground">
-            <div>
-              Time elapsed: <span className="font-medium tabular-nums text-foreground">{formatted}</span>
-            </div>
-            <div>
-              Coins: <span className="font-medium tabular-nums text-foreground">{count}</span>
-            </div>
-          </div>
-          <div className="flex justify-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => { resetTimer(); resetCount(); toast('Reset complete') }}>
-              Reset
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => { inc(); toast('Coin added') }}>
-              Add Coin
-            </Button>
-          </div>
+          <Button onClick={handleSave} disabled={updateSettingsMutation.isPending}>
+            {updateSettingsMutation.isPending ? 'Saving...' : 'Save Settings'}
+          </Button>
         </div>
-        <footer className="absolute bottom-8 text-center text-muted-foreground/80">
-          <p>Powered by Cloudflare</p>
-        </footer>
-        <Toaster richColors closeButton />
-      </div>
-    </AppLayout>
-  )
+      </SheetContent>
+    </Sheet>
+  );
+}
+function FileExplorer() {
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<any | null>(null);
+  const [showUploader, setShowUploader] = useState(false);
+  const queryClient = useTanstackQueryClient();
+  return (
+    <div className="h-screen w-full flex flex-col bg-background text-foreground">
+      <header className="flex items-center justify-between p-4 border-b shrink-0">
+        <div className="flex items-center gap-2">
+          <img src="/logo.svg" alt="TeleFile Logo" className="h-8 w-8" />
+          <h1 className="text-2xl font-bold font-display text-primary">TeleFile</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setShowUploader(s => !s)}><FileUp className="mr-2 h-4 w-4" /> Upload</Button>
+          <SettingsSheet />
+          <ThemeToggle className="relative top-0 right-0" />
+        </div>
+      </header>
+      <main className="flex-1 overflow-hidden">
+        <ResizablePanelGroup direction="horizontal" className="h-full">
+          <ResizablePanel defaultSize={20} minSize={15} className="min-w-[280px]">
+            <FolderPane selectedFolderId={currentFolderId} onSelectFolder={setCurrentFolderId} />
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel defaultSize={80}>
+            <div className="p-6 h-full overflow-y-auto">
+              {showUploader && (
+                <div className="mb-8">
+                  <UploadDropzone
+                    currentFolderId={currentFolderId}
+                    onUploadComplete={() => {
+                      queryClient.invalidateQueries({ queryKey: ['files', currentFolderId] });
+                    }}
+                  />
+                </div>
+              )}
+              <FileList currentFolderId={currentFolderId} onSelectFile={setSelectedFile} />
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      </main>
+      <footer className="text-center p-2 text-xs text-muted-foreground border-t">
+        Built with ❤�� at Cloudflare
+      </footer>
+    </div>
+  );
+}
+export function HomePage() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <FileExplorer />
+      <Toaster richColors closeButton />
+    </QueryClientProvider>
+  );
 }
